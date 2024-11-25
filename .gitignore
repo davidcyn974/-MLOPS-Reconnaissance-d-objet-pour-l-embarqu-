@@ -11,6 +11,7 @@ runs/
 glasses_dataset/
 glasses_dataset.zip
 glasses.finetuning.yolov8/
+yolo_glasses_finetuning/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

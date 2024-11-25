@@ -1,6 +1,8 @@
 import os
 import shutil
 import random
+from ultralytics import YOLO
+import torch
 
 def initialize_env():
     print("Initializing environment...")
@@ -87,5 +89,13 @@ if __name__ == "__main__":
     data_path = initialize_env()
     prepare_dataset(data_path=data_path)
     write_config(data_path=data_path)
+    model = YOLO('yolo11n.pt')
+    results = model.train(data=f"{data_path}/data.yaml",
+                        epochs=100, 
+                        imgsz=640, 
+                        save=True, 
+                        device='cuda' if torch.cuda.is_available() else 'cpu',
+                        project='yolo_glasses_finetuning',
+                        name='glasses_finetuned_yolo11n')
     #2: train the model
     #3: save the results
