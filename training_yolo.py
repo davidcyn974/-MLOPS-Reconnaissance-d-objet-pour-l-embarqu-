@@ -10,7 +10,7 @@ import shutil
 from PIL import Image, ImageOps
 from ultralytics import YOLO
 import cv2
-
+""" 
 # Unzip the dataset if needed
 import zipfile
 
@@ -28,7 +28,7 @@ image_dir = os.path.join(dataset_extract_path, 'images')
 
 # Create output directory if it doesn't exist
 if not os.path.exists(output_dir):
-    os.mkdir(output_dir)
+    os.mkdir(output_dir) """
 
 # Convert XML annotations to YOLO format
 def xml_to_yolo_bbox(bbox, w, h):
@@ -156,9 +156,15 @@ print("Contents of val/images:", os.listdir("data/val/images"))
 
 # Train the YOLO model
 model = YOLO('yolo11n.pt')
-results = model.train(data="data/data.yaml", epochs=2, imgsz=640, save=True, device='cpu')
+results = model.train(data="data/data.yaml",
+                       epochs=2, 
+                       imgsz=640, 
+                       save=True, 
+                       device='cpu',
+                       project='yolo_project',
+                       name='finetuned_yolo11n')
 
-# Validate the model
+""" # Validate the model
 metrics = model.val(split='val')
 print(f"Mean Average Precision @.5:.95 : {metrics.box.map}")
 print(f"Mean Average Precision @ .50   : {metrics.box.map50}")
@@ -181,3 +187,4 @@ for img_name in selected_images:
         plt.imshow(plotted_img)
         plt.axis('off')
         plt.show()
+ """
