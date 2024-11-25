@@ -9,11 +9,23 @@ cap.set(4, 480)  # hauteur
 
 # Charger le modèle
 use_quantized = False  # Mettre à True pour utiliser le modèle quantifié
-model_path = "kaggle_finetuned_quant.pt" if use_quantized else "kaggle_finetuned.pt"
+model_path = "kaggle_finetuned_quant.pt" if use_quantized else "yolo11n.pt"
+modle_path = "./runs/detect/train/weights/best.pt"
 model = YOLO(model_path)
 
 # Liste des classes d'objets
-classNames = ["with_mask", "mask_weared_incorrect", "without_mask"]
+# classNames = ["with_mask", "mask_weared_incorrect", "without_mask"]
+# classNames = ["person", "bicycle", "car", "motorbike", "aeroplane", "bus", "train", "truck", "boat",
+#               "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
+#               "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella",
+#               "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball", "kite", "baseball bat",
+#               "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup",
+#               "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange", "broccoli",
+#               "carrot", "hot dog", "pizza", "donut", "cake", "chair", "sofa", "pottedplant", "bed",
+#               "diningtable", "toilet", "tvmonitor", "laptop", "mouse", "remote", "keyboard", "cell phone",
+#               "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors",
+#               "teddy bear", "hair drier", "toothbrush"]
+classNames = ["person", "glasses"]
 
 while True:
     success, img = cap.read()  # Lire l'image de la webcam

@@ -4,6 +4,14 @@ dataset/
 labels/
 ultralytics/assets/
 runs/detect/
+
+# Finetuning
+glasses.v1i.yolov8/
+runs/
+glasses_dataset/
+glasses_dataset.zip
+glasses.finetuning.yolov8/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
