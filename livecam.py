@@ -8,7 +8,7 @@ cap.set(3, 640)  # largeur
 cap.set(4, 480)  # hauteur
 
 # Charger le modèle
-use_quantized = True  # Mettre à True pour utiliser le modèle quantifié
+use_quantized = False  # Mettre à True pour utiliser le modèle quantifié
 model_path = "kaggle_finetuned_quant.pt" if use_quantized else "kaggle_finetuned.pt"
 model = YOLO(model_path)
 
