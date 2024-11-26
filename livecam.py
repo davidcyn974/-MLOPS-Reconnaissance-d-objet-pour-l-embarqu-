@@ -1,5 +1,7 @@
 from ultralytics import YOLO
 import cv2
+from typing import Dict, Union, Literal, List
+from pathlib import Path
 import math
 
 # Démarrage de la webcam
@@ -7,15 +9,17 @@ cap = cv2.VideoCapture(0)
 cap.set(3, 640)  # largeur
 cap.set(4, 480)  # hauteur
 
-# Charger le modèle
-use_quantized = False  # Mettre à True pour utiliser le modèle quantifié
-model_path = "kaggle_finetuned_quant.pt" if use_quantized else "yolo11n.pt"
-model_path = "yolo_glasses_finetuning/glasses_finetuned_yolo11n/weights/best.pt"
-model = YOLO(model_path)
+ModelNames = Literal["base", "quantized", "mask_finetuned", "glasses_finetuned"]
 
-# Liste des classes d'objets
-# classNames = ["with_mask", "mask_weared_incorrect", "without_mask"]
-classNames = ["person", "bicycle", "car", "motorbike", "aeroplane", "bus", "train", "truck", "boat",
+models: Dict[ModelNames, Union[str, Path]] = {
+    'base': 'yolo11n.pt',
+    'quantized': 'yolo11n_quant.pt',
+    'mask_finetuned': 'yolo_mask_finetuning/mask_finetuned_yolo11n/weights/best.pt',
+    'glasses_finetuned': 'yolo_glasses_finetuning/glasses_finetuned_yolo11n/weights/best.pt',
+}
+
+class_names: Dict[ModelNames, List[str]] = {
+    'base': ["person", "bicycle", "car", "motorbike", "aeroplane", "bus", "train", "truck", "boat",
               "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
               "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella",
               "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball", "kite", "baseball bat",
@@ -24,8 +28,31 @@ classNames = ["person", "bicycle", "car", "motorbike", "aeroplane", "bus", "trai
               "carrot", "hot dog", "pizza", "donut", "cake", "chair", "sofa", "pottedplant", "bed",
               "diningtable", "toilet", "tvmonitor", "laptop", "mouse", "remote", "keyboard", "cell phone",
               "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors",
-              "teddy bear", "hair drier", "toothbrush"]
-classNames = ["glasses"]
+              "teddy bear", "hair drier", "toothbrush"],
+    'quantized': ["person", "bicycle", "car", "motorbike", "aeroplane", "bus", "train", "truck", "boat",
+              "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
+              "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella",
+              "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball", "kite", "baseball bat",
+              "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup",
+              "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange", "broccoli",
+              "carrot", "hot dog", "pizza", "donut", "cake", "chair", "sofa", "pottedplant", "bed",
+              "diningtable", "toilet", "tvmonitor", "laptop", "mouse", "remote", "keyboard", "cell phone",
+              "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors",
+              "teddy bear", "hair drier", "toothbrush"],
+    'mask_finetuned': ["with_mask", "mask_weared_incorrect", "without_mask"],
+    'glasses_finetuned': ["glasses"],
+}
+class ModelManager:
+    class_names: List[str]
+    model: Union[str, Path]
+    def __init__(self, model: ModelNames = 'base'):
+        self.model = models[model]
+        self.class_names = class_names[model]
+
+# Charger le modèle
+loaded_model = ModelManager('glasses_finetuned')
+model = YOLO(loaded_model.model)
+classNames = loaded_model.class_names
 
 while True:
     success, img = cap.read()  # Lire l'image de la webcam
