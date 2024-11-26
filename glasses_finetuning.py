@@ -94,6 +94,7 @@ if __name__ == "__main__":
                         epochs=100, 
                         imgsz=640, 
                         save=True, 
+                        amp=False,
                         device='cuda' if torch.cuda.is_available() else 'cpu',
                         project='yolo_glasses_finetuning',
                         name='glasses_finetuned_yolo11n')
