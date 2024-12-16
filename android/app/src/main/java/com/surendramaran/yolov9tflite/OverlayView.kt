@@ -40,8 +40,7 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
         textPaint.style = Paint.Style.FILL
         textPaint.textSize = 50f
 
-        boxPaint.color = ContextCompat.getColor(context!!, R.color.bounding_box_color)
-        boxPaint.strokeWidth = 8F
+        boxPaint.strokeWidth = 12F  // Thicker lines
         boxPaint.style = Paint.Style.STROKE
     }
 
@@ -49,26 +48,45 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
         super.draw(canvas)
 
         results.forEach {
+            // Set color based on class
+            boxPaint.color = when(it.clsName.lowercase()) {
+                "with_mask" -> Color.GREEN
+                "without_mask" -> Color.RED
+                "mask_weared_incorrect" -> Color.YELLOW
+                else -> Color.WHITE
+            }
+
             val left = it.x1 * width
             val top = it.y1 * height
             val right = it.x2 * width
             val bottom = it.y2 * height
 
+            // Draw box with thicker stroke
             canvas.drawRect(left, top, right, bottom, boxPaint)
-            val drawableText = it.clsName
+
+            // Draw label with confidence
+            val drawableText = "${it.clsName} (${(it.cnf * 100).toInt()}%)"
 
             textBackgroundPaint.getTextBounds(drawableText, 0, drawableText.length, bounds)
             val textWidth = bounds.width()
             val textHeight = bounds.height()
+
+            // Draw background for text
             canvas.drawRect(
                 left,
-                top,
+                top - textHeight - BOUNDING_RECT_TEXT_PADDING,  // Move text above box
                 left + textWidth + BOUNDING_RECT_TEXT_PADDING,
-                top + textHeight + BOUNDING_RECT_TEXT_PADDING,
+                top,
                 textBackgroundPaint
             )
-            canvas.drawText(drawableText, left, top + bounds.height(), textPaint)
 
+            // Draw text
+            canvas.drawText(
+                drawableText,
+                left + BOUNDING_RECT_TEXT_PADDING/2,
+                top - BOUNDING_RECT_TEXT_PADDING/2,
+                textPaint
+            )
         }
     }
 

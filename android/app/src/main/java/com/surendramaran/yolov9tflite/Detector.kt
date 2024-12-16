@@ -7,8 +7,6 @@ import com.surendramaran.yolov9tflite.MetaData.extractNamesFromLabelFile
 import com.surendramaran.yolov9tflite.MetaData.extractNamesFromMetadata
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
-import org.tensorflow.lite.gpu.CompatibilityList
-import org.tensorflow.lite.gpu.GpuDelegate
 import org.tensorflow.lite.support.common.FileUtil
 import org.tensorflow.lite.support.common.ops.CastOp
 import org.tensorflow.lite.support.common.ops.NormalizeOp
@@ -30,11 +28,11 @@ class Detector(
 
     private var interpreter: Interpreter
     private var labels = mutableListOf<String>()
-
     private var tensorWidth = 0
     private var tensorHeight = 0
     private var numChannel = 0
     private var numElements = 0
+    private val isFineTunedModel = modelPath == Constants.MASK_MODEL_PATH || modelPath == Constants.GLASSES_FINETUNE
 
     private val imageProcessor = ImageProcessor.Builder()
         .add(NormalizeOp(INPUT_MEAN, INPUT_STANDARD_DEVIATION))
@@ -42,15 +40,8 @@ class Detector(
         .build()
 
     init {
-        val compatList = CompatibilityList()
-
-        val options = Interpreter.Options().apply{
-            if(compatList.isDelegateSupportedOnThisDevice){
-                val delegateOptions = compatList.bestOptionsForThisDevice
-                this.addDelegate(GpuDelegate(delegateOptions))
-            } else {
-                this.setNumThreads(4)
-            }
+        val options = Interpreter.Options().apply {
+            this.setNumThreads(4)
         }
 
         val model = FileUtil.loadMappedFile(context, modelPath)
@@ -84,25 +75,16 @@ class Detector(
             numChannel = outputShape[1]
             numElements = outputShape[2]
         }
+
+        message("Model loaded with input shape: ${inputShape?.contentToString()}, output shape: ${outputShape?.contentToString()}")
+        message("Labels: ${labels.joinToString()}")
     }
 
-    fun restart(isGpu: Boolean) {
+    fun restart() {
         interpreter.close()
 
-        val options = if (isGpu) {
-            val compatList = CompatibilityList()
-            Interpreter.Options().apply{
-                if(compatList.isDelegateSupportedOnThisDevice){
-                    val delegateOptions = compatList.bestOptionsForThisDevice
-                    this.addDelegate(GpuDelegate(delegateOptions))
-                } else {
-                    this.setNumThreads(4)
-                }
-            }
-        } else {
-            Interpreter.Options().apply{
-                this.setNumThreads(4)
-            }
+        val options = Interpreter.Options().apply {
+            this.setNumThreads(4)
         }
 
         val model = FileUtil.loadMappedFile(context, modelPath)
@@ -143,84 +125,187 @@ class Detector(
     }
 
     private fun bestBox(array: FloatArray) : List<BoundingBox>? {
-
         val boundingBoxes = mutableListOf<BoundingBox>()
 
-        for (c in 0 until numElements) {
-            var maxConf = CONFIDENCE_THRESHOLD
-            var maxIdx = -1
-            var j = 4
-            var arrayIdx = c + numElements * j
-            while (j < numChannel){
-                if (array[arrayIdx] > maxConf) {
-                    maxConf = array[arrayIdx]
-                    maxIdx = j - 4
+        if (isFineTunedModel) {
+            // Process finetuned model output format [batch, channels, predictions]
+            val numClasses = numChannel - 4  // Subtract 4 for bbox coordinates
+            
+            // For each prediction
+            for (i in 0 until numElements) {
+                // Get confidence scores for all classes
+                val confidences = FloatArray(numClasses)
+                var sum = 0f
+                for (j in 0 until numClasses) {
+                    confidences[j] = array[(4 + j) * numElements + i]
+                    sum += confidences[j]
                 }
-                j++
-                arrayIdx += numElements
+                
+                // Calculate relative probabilities
+                val maxConf = confidences.maxOrNull() ?: 0f
+                val maxIdx = confidences.indexOfFirst { it == maxConf }
+                val relativeConf = if (sum > 0) maxConf / sum else 0f
+                
+                if (relativeConf > CONFIDENCE_THRESHOLD) {
+                    // Get box coordinates
+                    val cx = array[0 * numElements + i] / INPUT_SIZE
+                    val cy = array[1 * numElements + i] / INPUT_SIZE
+                    val w = array[2 * numElements + i] / INPUT_SIZE
+                    val h = array[3 * numElements + i] / INPUT_SIZE
+                    
+                    // Convert to corner coordinates
+                    val x1 = (cx - w/2).coerceIn(0f, 1f)
+                    val y1 = (cy - h/2).coerceIn(0f, 1f)
+                    val x2 = (cx + w/2).coerceIn(0f, 1f)
+                    val y2 = (cy + h/2).coerceIn(0f, 1f)
+                    
+                    // Only add valid boxes with reasonable size
+                    val width = x2 - x1
+                    val height = y2 - y1
+                    
+                    // Additional size ratio check to ensure box is roughly face-shaped
+                    val aspectRatio = width / height
+                    val isValidRatio = aspectRatio in 0.7f..1.5f  // Stricter face aspect ratio
+                    
+                    if (width > MIN_BOX_SIZE && height > MIN_BOX_SIZE && 
+                        width < MAX_BOX_SIZE && height < MAX_BOX_SIZE && 
+                        isValidRatio) {
+                            boundingBoxes.add(
+                                BoundingBox(
+                                    x1 = x1,
+                                    y1 = y1,
+                                    x2 = x2,
+                                    y2 = y2,
+                                    cx = cx, cy = cy, w = w, h = h,
+                                    cnf = relativeConf.coerceAtMost(1.0f), // Ensure confidence never exceeds 100%
+                                    cls = maxIdx,
+                                    clsName = labels[maxIdx]
+                                )
+                            )
+                    }
+                }
             }
+        } else {
+            // Process default YOLOv11 output format [batch, predictions, channels]
+            for (c in 0 until numElements) {
+                var maxConf = CONFIDENCE_THRESHOLD
+                var maxIdx = -1
+                var j = 4
+                var arrayIdx = c + numElements * j
+                while (j < numChannel) {
+                    if (array[arrayIdx] > maxConf) {
+                        maxConf = array[arrayIdx]
+                        maxIdx = j - 4
+                    }
+                    j++
+                    arrayIdx += numElements
+                }
 
-            if (maxConf > CONFIDENCE_THRESHOLD) {
-                val clsName = labels[maxIdx]
-                val cx = array[c] // 0
-                val cy = array[c + numElements] // 1
-                val w = array[c + numElements * 2]
-                val h = array[c + numElements * 3]
-                val x1 = cx - (w/2F)
-                val y1 = cy - (h/2F)
-                val x2 = cx + (w/2F)
-                val y2 = cy + (h/2F)
-                if (x1 < 0F || x1 > 1F) continue
-                if (y1 < 0F || y1 > 1F) continue
-                if (x2 < 0F || x2 > 1F) continue
-                if (y2 < 0F || y2 > 1F) continue
+                if (maxConf > CONFIDENCE_THRESHOLD) {
+                    val clsName = labels[maxIdx]
+                    val cx = array[c]
+                    val cy = array[c + numElements]
+                    val w = array[c + numElements * 2]
+                    val h = array[c + numElements * 3]
+                    val x1 = cx - (w/2F)
+                    val y1 = cy - (h/2F)
+                    val x2 = cx + (w/2F)
+                    val y2 = cy + (h/2F)
+                    if (x1 < 0F || x1 > 1F) continue
+                    if (y1 < 0F || y1 > 1F) continue
+                    if (x2 < 0F || x2 > 1F) continue
+                    if (y2 < 0F || y2 > 1F) continue
 
-                boundingBoxes.add(
-                    BoundingBox(
-                        x1 = x1, y1 = y1, x2 = x2, y2 = y2,
-                        cx = cx, cy = cy, w = w, h = h,
-                        cnf = maxConf, cls = maxIdx, clsName = clsName
+                    boundingBoxes.add(
+                        BoundingBox(
+                            x1 = x1, y1 = y1, x2 = x2, y2 = y2,
+                            cx = cx, cy = cy, w = w, h = h,
+                            cnf = maxConf, cls = maxIdx, clsName = clsName
+                        )
                     )
-                )
+                }
             }
         }
 
         if (boundingBoxes.isEmpty()) return null
 
-        return applyNMS(boundingBoxes)
-    }
+        // For finetuned models, take up to 3 highest confidence detections
+        // For default model, apply NMS to allow multiple detections
+        return if (isFineTunedModel) {
+            val sortedBoxes = boundingBoxes.sortedByDescending { it.cnf }
+            
+            // Apply NMS to top detections for finetuned models
+            val finalBoxes = mutableListOf<BoundingBox>()
+            val isIncluded = BooleanArray(sortedBoxes.size) { true }
 
-    private fun applyNMS(boxes: List<BoundingBox>) : MutableList<BoundingBox> {
-        val sortedBoxes = boxes.sortedByDescending { it.cnf }.toMutableList()
-        val selectedBoxes = mutableListOf<BoundingBox>()
-
-        while(sortedBoxes.isNotEmpty()) {
-            val first = sortedBoxes.first()
-            selectedBoxes.add(first)
-            sortedBoxes.remove(first)
-
-            val iterator = sortedBoxes.iterator()
-            while (iterator.hasNext()) {
-                val nextBox = iterator.next()
-                val iou = calculateIoU(first, nextBox)
-                if (iou >= IOU_THRESHOLD) {
-                    iterator.remove()
+            for (i in sortedBoxes.indices) {
+                if (!isIncluded[i]) continue
+                val boxA = sortedBoxes[i]
+                finalBoxes.add(boxA)
+                
+                // Stop if we have enough detections
+                if (finalBoxes.size >= MAX_FINETUNED_DETECTIONS) break
+                
+                for (j in i + 1 until sortedBoxes.size) {
+                    if (!isIncluded[j]) continue
+                    val boxB = sortedBoxes[j]
+                    
+                    // Calculate IoU
+                    val intersectionX1 = maxOf(boxA.x1, boxB.x1)
+                    val intersectionY1 = maxOf(boxA.y1, boxB.y1)
+                    val intersectionX2 = minOf(boxA.x2, boxB.x2)
+                    val intersectionY2 = minOf(boxA.y2, boxB.y2)
+                    
+                    if (intersectionX1 < intersectionX2 && intersectionY1 < intersectionY2) {
+                        val intersectionArea = (intersectionX2 - intersectionX1) * (intersectionY2 - intersectionY1)
+                        val boxAArea = (boxA.x2 - boxA.x1) * (boxA.y2 - boxA.y1)
+                        val boxBArea = (boxB.x2 - boxB.x1) * (boxB.y2 - boxB.y1)
+                        val iou = intersectionArea / (boxAArea + boxBArea - intersectionArea)
+                        
+                        if (iou > NMS_IOU_THRESHOLD) {
+                            isIncluded[j] = false
+                        }
+                    }
                 }
             }
+            
+            finalBoxes
+        } else {
+            // Apply Non-Maximum Suppression for default model
+            val finalBoxes = mutableListOf<BoundingBox>()
+            val sortedBoxes = boundingBoxes.sortedByDescending { it.cnf }
+            val isIncluded = BooleanArray(sortedBoxes.size) { true }
+
+            for (i in sortedBoxes.indices) {
+                if (!isIncluded[i]) continue
+                val boxA = sortedBoxes[i]
+                finalBoxes.add(boxA)
+                
+                for (j in i + 1 until sortedBoxes.size) {
+                    if (!isIncluded[j]) continue
+                    val boxB = sortedBoxes[j]
+                    
+                    // Calculate IoU
+                    val intersectionX1 = maxOf(boxA.x1, boxB.x1)
+                    val intersectionY1 = maxOf(boxA.y1, boxB.y1)
+                    val intersectionX2 = minOf(boxA.x2, boxB.x2)
+                    val intersectionY2 = minOf(boxA.y2, boxB.y2)
+                    
+                    if (intersectionX1 < intersectionX2 && intersectionY1 < intersectionY2) {
+                        val intersectionArea = (intersectionX2 - intersectionX1) * (intersectionY2 - intersectionY1)
+                        val boxAArea = (boxA.x2 - boxA.x1) * (boxA.y2 - boxA.y1)
+                        val boxBArea = (boxB.x2 - boxB.x1) * (boxB.y2 - boxB.y1)
+                        val iou = intersectionArea / (boxAArea + boxBArea - intersectionArea)
+                        
+                        if (iou > NMS_IOU_THRESHOLD) {
+                            isIncluded[j] = false
+                        }
+                    }
+                }
+            }
+            
+            finalBoxes
         }
-
-        return selectedBoxes
-    }
-
-    private fun calculateIoU(box1: BoundingBox, box2: BoundingBox): Float {
-        val x1 = maxOf(box1.x1, box2.x1)
-        val y1 = maxOf(box1.y1, box2.y1)
-        val x2 = minOf(box1.x2, box2.x2)
-        val y2 = minOf(box1.y2, box2.y2)
-        val intersectionArea = maxOf(0F, x2 - x1) * maxOf(0F, y2 - y1)
-        val box1Area = box1.w * box1.h
-        val box2Area = box2.w * box2.h
-        return intersectionArea / (box1Area + box2Area - intersectionArea)
     }
 
     interface DetectorListener {
@@ -229,11 +314,19 @@ class Detector(
     }
 
     companion object {
+        private const val INPUT_SIZE = 640f
         private const val INPUT_MEAN = 0f
         private const val INPUT_STANDARD_DEVIATION = 255f
         private val INPUT_IMAGE_TYPE = DataType.FLOAT32
         private val OUTPUT_IMAGE_TYPE = DataType.FLOAT32
-        private const val CONFIDENCE_THRESHOLD = 0.3F
-        private const val IOU_THRESHOLD = 0.5F
+
+        // Thresholds
+        private const val CONFIDENCE_THRESHOLD = 0.75f
+        private const val MIN_BOX_SIZE = 0.1f
+        private const val MAX_BOX_SIZE = 0.8f
+        private const val NMS_IOU_THRESHOLD = 0.3f
+        private const val MAX_FINETUNED_DETECTIONS = 1
     }
+
+    private fun Float.format(digits: Int) = "%.${digits}f".format(this)
 }

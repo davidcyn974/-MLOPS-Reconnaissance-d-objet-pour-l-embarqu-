@@ -22,7 +22,11 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
+import com.surendramaran.yolov9tflite.Constants.GLASSES_FINETUNE
+import com.surendramaran.yolov9tflite.Constants.GLASSES_LABELS_PATH
 import com.surendramaran.yolov9tflite.Constants.LABELS_PATH
+import com.surendramaran.yolov9tflite.Constants.MASK_LABELS_PATH
+import com.surendramaran.yolov9tflite.Constants.MASK_MODEL_PATH
 import com.surendramaran.yolov9tflite.Constants.MODEL_PATH
 import com.surendramaran.yolov9tflite.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
@@ -32,7 +36,7 @@ import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     private lateinit var binding: ActivityMainBinding
-    private val isFrontCamera = false
+    private var isFrontCamera = false
 
     private var preview: Preview? = null
     private var imageAnalyzer: ImageAnalysis? = null
@@ -43,9 +47,17 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
     private lateinit var cameraExecutor: ExecutorService
 
+    private var currentModelPath = MODEL_PATH
+    private var currentLabelsPath = LABELS_PATH
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
+
+        binding.btnSwitchCamera.setOnClickListener {
+            isFrontCamera = !isFrontCamera
+            startCamera()
+        }
 
         enableEdgeToEdge()
         setContentView(binding.root)
@@ -57,11 +69,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
         cameraExecutor = Executors.newSingleThreadExecutor()
 
-        cameraExecutor.execute {
-            detector = Detector(baseContext, MODEL_PATH, LABELS_PATH, this) {
-                toast(it)
-            }
-        }
+        initializeDetector()
 
         if (allPermissionsGranted()) {
             startCamera()
@@ -72,17 +80,42 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         bindListeners()
     }
 
+    private fun initializeDetector() {
+        cameraExecutor.submit {
+            detector?.close()
+            detector = Detector(
+                context = baseContext,
+                modelPath = currentModelPath,
+                labelPath = currentLabelsPath,
+                detectorListener = this,
+                message = { msg ->
+                    runOnUiThread {
+                        Toast.makeText(baseContext, msg, Toast.LENGTH_SHORT).show()
+                        Log.d("ModelInitialization", msg)
+                    }
+                }
+            )
+        }
+    }
+
     private fun bindListeners() {
         binding.apply {
-            isGpu.setOnCheckedChangeListener { buttonView, isChecked ->
-                cameraExecutor.submit {
-                    detector?.restart(isGpu = isChecked)
+            modelSelector.setOnCheckedChangeListener { _, checkedId ->
+                when (checkedId) {
+                    R.id.btnYolov11 -> {
+                        currentModelPath = MODEL_PATH
+                        currentLabelsPath = LABELS_PATH
+                    }
+                    R.id.btnMask -> {
+                        currentModelPath = MASK_MODEL_PATH
+                        currentLabelsPath = MASK_LABELS_PATH
+                    }
+                    R.id.btnGlasses -> {
+                        currentModelPath = GLASSES_FINETUNE
+                        currentLabelsPath = GLASSES_LABELS_PATH
+                    }
                 }
-                if (isChecked) {
-                    buttonView.setBackgroundColor(ContextCompat.getColor(baseContext, R.color.orange))
-                } else {
-                    buttonView.setBackgroundColor(ContextCompat.getColor(baseContext, R.color.gray))
-                }
+                initializeDetector()
             }
         }
     }
@@ -100,10 +133,11 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
         val rotation = binding.viewFinder.display.rotation
 
-        val cameraSelector = CameraSelector
-            .Builder()
-            .requireLensFacing(CameraSelector.LENS_FACING_BACK)
-            .build()
+        val cameraSelector = CameraSelector.Builder()
+            .requireLensFacing(
+                if (isFrontCamera) CameraSelector.LENS_FACING_FRONT
+                else CameraSelector.LENS_FACING_BACK
+            ).build()
 
         preview =  Preview.Builder()
             .setTargetAspectRatio(AspectRatio.RATIO_4_3)
