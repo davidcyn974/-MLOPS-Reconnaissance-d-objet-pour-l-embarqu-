@@ -129,7 +129,6 @@ class Detector(
 
         if (isFineTunedModel) {
             if (modelPath == Constants.GLASSES_FINETUNE) {
-                message("Processing glasses model output: elements=$numElements channels=$numChannel")
                 val numPredictions = numElements  // 8400 predictions
                 var maxConfidence = 0f
                 

@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">YoloV11 Mlops: masks, glasses, finetuned</string>
+    <string name="app_name">YoloV11 MLOps: masks and glasses fine-tuning</string>
     <string name="gpu">GPU</string>
-    <string name="yolov9_object_detect">Custom YOLOV11 detection engine</string>
+    <string name="yolov9_object_detect">MLOps YoloV11</string>
 </resources>
