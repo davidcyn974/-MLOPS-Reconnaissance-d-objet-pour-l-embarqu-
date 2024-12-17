@@ -143,9 +143,7 @@ class Detector(
                         val y = array[1 * numPredictions + i]
                         val w = array[2 * numPredictions + i]
                         val h = array[3 * numPredictions + i]
-                        
-                        message("Glasses detection: conf=${confidence.format(3)} at ($x, $y) size=${w}x${h}")
-                        
+
                         // Convert to normalized coordinates
                         val x1 = (x - w/2).coerceIn(0f, INPUT_SIZE) / INPUT_SIZE
                         val y1 = (y - h/2).coerceIn(0f, INPUT_SIZE) / INPUT_SIZE
@@ -173,12 +171,10 @@ class Detector(
                                     clsName = "glasses"
                                 )
                             )
-                            message("Added glasses box: x1=${x1.format(2)} y1=${y1.format(2)} w=${width.format(2)} h=${height.format(2)}")
                         }
                     }
                 }
                 
-                message("Glasses detection summary: maxConf=${maxConfidence.format(3)}, boxes=${boundingBoxes.size}")
                 return if (boundingBoxes.isNotEmpty()) {
                     boundingBoxes.sortedByDescending { it.cnf }.take(1)  // Only take the highest confidence detection
                 } else null
@@ -238,7 +234,6 @@ class Detector(
                     }
                 }
                 
-                message("Mask detection: maxConf=${maxConf.format(3)}, boxes=${boundingBoxes.size}")
                 return if (boundingBoxes.isNotEmpty()) {
                     boundingBoxes.sortedByDescending { it.cnf }.take(1)
                 } else null
