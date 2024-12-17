@@ -241,7 +241,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         runOnUiThread {
             binding.inferenceTime.text = "${inferenceTime}ms"
             binding.overlay.apply {
-                setResults(boundingBoxes)
+                setResults(boundingBoxes, currentModelPath == Constants.MODEL_PATH)
                 invalidate()
             }
         }

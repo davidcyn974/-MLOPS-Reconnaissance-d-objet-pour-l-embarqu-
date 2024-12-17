@@ -15,6 +15,7 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
     private var boxPaint = Paint()
     private var textBackgroundPaint = Paint()
     private var textPaint = Paint()
+    private var isDefaultModel = false
 
     private var bounds = Rect()
 
@@ -40,7 +41,7 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
         textPaint.style = Paint.Style.FILL
         textPaint.textSize = 50f
 
-        boxPaint.strokeWidth = 12F  // Thicker lines
+        boxPaint.strokeWidth = 12F
         boxPaint.style = Paint.Style.STROKE
     }
 
@@ -48,12 +49,17 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
         super.draw(canvas)
 
         results.forEach {
-            // Set color based on class
-            boxPaint.color = when(it.clsName.lowercase()) {
-                "with_mask" -> Color.GREEN
-                "without_mask" -> Color.RED
-                "mask_weared_incorrect" -> Color.YELLOW
-                else -> Color.WHITE
+            boxPaint.color = if (isDefaultModel) {
+                Color.BLUE
+            } else {
+                when(it.clsName.lowercase()) {
+                    "with_mask" -> Color.GREEN
+                    "without_mask" -> Color.RED
+                    "mask_weared_incorrect" -> Color.YELLOW
+                    "with_glasses" -> Color.CYAN
+                    "without_glasses" -> Color.MAGENTA
+                    else -> Color.WHITE
+                }
             }
 
             val left = it.x1 * width
@@ -61,26 +67,22 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
             val right = it.x2 * width
             val bottom = it.y2 * height
 
-            // Draw box with thicker stroke
             canvas.drawRect(left, top, right, bottom, boxPaint)
 
-            // Draw label with confidence
             val drawableText = "${it.clsName} (${(it.cnf * 100).toInt()}%)"
 
             textBackgroundPaint.getTextBounds(drawableText, 0, drawableText.length, bounds)
             val textWidth = bounds.width()
             val textHeight = bounds.height()
 
-            // Draw background for text
             canvas.drawRect(
                 left,
-                top - textHeight - BOUNDING_RECT_TEXT_PADDING,  // Move text above box
+                top - textHeight - BOUNDING_RECT_TEXT_PADDING,
                 left + textWidth + BOUNDING_RECT_TEXT_PADDING,
                 top,
                 textBackgroundPaint
             )
 
-            // Draw text
             canvas.drawText(
                 drawableText,
                 left + BOUNDING_RECT_TEXT_PADDING/2,
@@ -90,8 +92,9 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
         }
     }
 
-    fun setResults(boundingBoxes: List<BoundingBox>) {
+    fun setResults(boundingBoxes: List<BoundingBox>, isDefault: Boolean = false) {
         results = boundingBoxes
+        isDefaultModel = isDefault
         invalidate()
     }
 

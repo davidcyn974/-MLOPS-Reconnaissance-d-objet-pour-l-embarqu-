@@ -128,62 +128,121 @@ class Detector(
         val boundingBoxes = mutableListOf<BoundingBox>()
 
         if (isFineTunedModel) {
-            // Process finetuned model output format [batch, channels, predictions]
-            val numClasses = numChannel - 4  // Subtract 4 for bbox coordinates
-            
-            // For each prediction
-            for (i in 0 until numElements) {
-                // Get confidence scores for all classes
-                val confidences = FloatArray(numClasses)
-                var sum = 0f
-                for (j in 0 until numClasses) {
-                    confidences[j] = array[(4 + j) * numElements + i]
-                    sum += confidences[j]
-                }
+            if (modelPath == Constants.GLASSES_FINETUNE) {
+                message("Processing glasses model output: elements=$numElements channels=$numChannel")
+                val numPredictions = numElements  // 8400 predictions
+                var maxConfidence = 0f
                 
-                // Calculate relative probabilities
-                val maxConf = confidences.maxOrNull() ?: 0f
-                val maxIdx = confidences.indexOfFirst { it == maxConf }
-                val relativeConf = if (sum > 0) maxConf / sum else 0f
-                
-                if (relativeConf > CONFIDENCE_THRESHOLD) {
-                    // Get box coordinates
-                    val cx = array[0 * numElements + i] / INPUT_SIZE
-                    val cy = array[1 * numElements + i] / INPUT_SIZE
-                    val w = array[2 * numElements + i] / INPUT_SIZE
-                    val h = array[3 * numElements + i] / INPUT_SIZE
+                for (i in 0 until numPredictions) {
+                    // Get confidence score (last channel)
+                    val confidence = array[4 * numPredictions + i]
+                    maxConfidence = maxOf(maxConfidence, confidence)
                     
-                    // Convert to corner coordinates
-                    val x1 = (cx - w/2).coerceIn(0f, 1f)
-                    val y1 = (cy - h/2).coerceIn(0f, 1f)
-                    val x2 = (cx + w/2).coerceIn(0f, 1f)
-                    val y2 = (cy + h/2).coerceIn(0f, 1f)
-                    
-                    // Only add valid boxes with reasonable size
-                    val width = x2 - x1
-                    val height = y2 - y1
-                    
-                    // Additional size ratio check to ensure box is roughly face-shaped
-                    val aspectRatio = width / height
-                    val isValidRatio = aspectRatio in 0.7f..1.5f  // Stricter face aspect ratio
-                    
-                    if (width > MIN_BOX_SIZE && height > MIN_BOX_SIZE && 
-                        width < MAX_BOX_SIZE && height < MAX_BOX_SIZE && 
-                        isValidRatio) {
+                    if (confidence > 0.3f) {  // Lower threshold for initial detection
+                        // Get box coordinates (first 4 channels)
+                        val x = array[0 * numPredictions + i]
+                        val y = array[1 * numPredictions + i]
+                        val w = array[2 * numPredictions + i]
+                        val h = array[3 * numPredictions + i]
+                        
+                        message("Glasses detection: conf=${confidence.format(3)} at ($x, $y) size=${w}x${h}")
+                        
+                        // Convert to normalized coordinates
+                        val x1 = (x - w/2).coerceIn(0f, INPUT_SIZE) / INPUT_SIZE
+                        val y1 = (y - h/2).coerceIn(0f, INPUT_SIZE) / INPUT_SIZE
+                        val x2 = (x + w/2).coerceIn(0f, INPUT_SIZE) / INPUT_SIZE
+                        val y2 = (y + h/2).coerceIn(0f, INPUT_SIZE) / INPUT_SIZE
+                        
+                        val width = x2 - x1
+                        val height = y2 - y1
+                        
+                        // More permissive size constraints for glasses
+                        if (width > 0.05f && height > 0.02f && // Allow smaller detections
+                            width < 0.9f && height < 0.5f) {   // Allow larger detections
                             boundingBoxes.add(
                                 BoundingBox(
                                     x1 = x1,
                                     y1 = y1,
                                     x2 = x2,
                                     y2 = y2,
-                                    cx = cx, cy = cy, w = w, h = h,
-                                    cnf = relativeConf.coerceAtMost(1.0f), // Ensure confidence never exceeds 100%
-                                    cls = maxIdx,
-                                    clsName = labels[maxIdx]
+                                    cx = x / INPUT_SIZE, 
+                                    cy = y / INPUT_SIZE, 
+                                    w = w / INPUT_SIZE, 
+                                    h = h / INPUT_SIZE,
+                                    cnf = confidence,
+                                    cls = 0,
+                                    clsName = "glasses"
                                 )
                             )
+                            message("Added glasses box: x1=${x1.format(2)} y1=${y1.format(2)} w=${width.format(2)} h=${height.format(2)}")
+                        }
                     }
                 }
+                
+                message("Glasses detection summary: maxConf=${maxConfidence.format(3)}, boxes=${boundingBoxes.size}")
+                return if (boundingBoxes.isNotEmpty()) {
+                    boundingBoxes.sortedByDescending { it.cnf }.take(1)  // Only take the highest confidence detection
+                } else null
+                
+            } else {
+                // Process mask detection model output format
+                val numClasses = numChannel - 4
+                var maxConf = 0f
+                
+                // For each prediction
+                for (i in 0 until numElements) {
+                    // Get confidence scores for all classes
+                    val confidences = FloatArray(numClasses)
+                    var sum = 0f
+                    for (j in 0 until numClasses) {
+                        confidences[j] = array[(4 + j) * numElements + i]
+                        sum += confidences[j]
+                        maxConf = maxOf(maxConf, confidences[j])
+                    }
+                    
+                    // Calculate relative probabilities
+                    val maxIdx = confidences.indexOfFirst { it == confidences.maxOrNull() }
+                    val relativeConf = if (sum > 0) confidences[maxIdx] / sum else 0f
+                    
+                    if (relativeConf > 0.75f) {  // Adjusted threshold
+                        val cx = array[0 * numElements + i] / INPUT_SIZE
+                        val cy = array[1 * numElements + i] / INPUT_SIZE
+                        val w = array[2 * numElements + i] / INPUT_SIZE
+                        val h = array[3 * numElements + i] / INPUT_SIZE
+                        
+                        val x1 = (cx - w/2).coerceIn(0f, 1f)
+                        val y1 = (cy - h/2).coerceIn(0f, 1f)
+                        val x2 = (cx + w/2).coerceIn(0f, 1f)
+                        val y2 = (cy + h/2).coerceIn(0f, 1f)
+                        
+                        val width = x2 - x1
+                        val height = y2 - y1
+                        val aspectRatio = width / height
+                        
+                        if (width > 0.1f && height > 0.1f && 
+                            width < 0.8f && height < 0.8f && 
+                            aspectRatio in 0.7f..1.5f) {
+                                // Use raw confidence score instead of scaling
+                                boundingBoxes.add(
+                                    BoundingBox(
+                                        x1 = x1,
+                                        y1 = y1,
+                                        x2 = x2,
+                                        y2 = y2,
+                                        cx = cx, cy = cy, w = w, h = h,
+                                        cnf = relativeConf,
+                                        cls = maxIdx,
+                                        clsName = labels[maxIdx]
+                                    )
+                                )
+                        }
+                    }
+                }
+                
+                message("Mask detection: maxConf=${maxConf.format(3)}, boxes=${boundingBoxes.size}")
+                return if (boundingBoxes.isNotEmpty()) {
+                    boundingBoxes.sortedByDescending { it.cnf }.take(1)
+                } else null
             }
         } else {
             // Process default YOLOv11 output format [batch, predictions, channels]
@@ -317,15 +376,62 @@ class Detector(
         private const val INPUT_SIZE = 640f
         private const val INPUT_MEAN = 0f
         private const val INPUT_STANDARD_DEVIATION = 255f
+        private const val CONFIDENCE_THRESHOLD = 0.75f
+        private const val MIN_BOX_SIZE = 0.05f  // Minimum box size as fraction of image
+        private const val MAX_BOX_SIZE = 0.9f   // Maximum box size as fraction of image
         private val INPUT_IMAGE_TYPE = DataType.FLOAT32
         private val OUTPUT_IMAGE_TYPE = DataType.FLOAT32
 
         // Thresholds
-        private const val CONFIDENCE_THRESHOLD = 0.75f
-        private const val MIN_BOX_SIZE = 0.1f
-        private const val MAX_BOX_SIZE = 0.8f
         private const val NMS_IOU_THRESHOLD = 0.3f
         private const val MAX_FINETUNED_DETECTIONS = 1
+    }
+
+    private fun nonMaxSuppression(boxes: List<BoundingBox>, iouThreshold: Float): List<BoundingBox> {
+        // Sort boxes by confidence
+        val sortedBoxes = boxes.sortedByDescending { it.cnf }
+        val selectedBoxes = mutableListOf<BoundingBox>()
+
+        // Keep track of which boxes are still valid
+        val validBoxes = BooleanArray(sortedBoxes.size) { true }
+
+        for (i in sortedBoxes.indices) {
+            if (!validBoxes[i]) continue
+
+            selectedBoxes.add(sortedBoxes[i])
+
+            // Compare with rest of the boxes
+            for (j in i + 1 until sortedBoxes.size) {
+                if (!validBoxes[j]) continue
+
+                // Calculate IoU between boxes
+                val iou = calculateIoU(sortedBoxes[i], sortedBoxes[j])
+                if (iou >= iouThreshold) {
+                    validBoxes[j] = false  // Mark box as invalid if IoU is above threshold
+                }
+            }
+        }
+
+        return selectedBoxes
+    }
+
+    private fun calculateIoU(box1: BoundingBox, box2: BoundingBox): Float {
+        // Calculate intersection area
+        val xLeft = maxOf(box1.x1, box2.x1)
+        val yTop = maxOf(box1.y1, box2.y1)
+        val xRight = minOf(box1.x2, box2.x2)
+        val yBottom = minOf(box1.y2, box2.y2)
+
+        if (xRight < xLeft || yBottom < yTop) return 0f
+
+        val intersection = (xRight - xLeft) * (yBottom - yTop)
+
+        // Calculate union area
+        val box1Area = (box1.x2 - box1.x1) * (box1.y2 - box1.y1)
+        val box2Area = (box2.x2 - box2.x1) * (box2.y2 - box2.y1)
+        val union = box1Area + box2Area - intersection
+
+        return if (union <= 0f) 0f else intersection / union
     }
 
     private fun Float.format(digits: Int) = "%.${digits}f".format(this)
