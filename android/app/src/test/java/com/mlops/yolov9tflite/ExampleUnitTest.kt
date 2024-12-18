@@ -1,4 +1,4 @@
-package com.surendramaran.yolov9tflite
+package com.mlops.yolov9tflite
 
 import org.junit.Test
 

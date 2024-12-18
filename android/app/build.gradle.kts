@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.surendramaran.yolov9tflite"
+    namespace = "com.mlops.yolov9tflite"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.surendramaran.yolov9tflite"
+        applicationId = "com.mlops.yolov9tflite"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

@@ -1,10 +1,10 @@
-package com.surendramaran.yolov9tflite
+package com.mlops.yolov9tflite
 
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
-import com.surendramaran.yolov9tflite.MetaData.extractNamesFromLabelFile
-import com.surendramaran.yolov9tflite.MetaData.extractNamesFromMetadata
+import com.mlops.yolov9tflite.MetaData.extractNamesFromLabelFile
+import com.mlops.yolov9tflite.MetaData.extractNamesFromMetadata
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.support.common.FileUtil

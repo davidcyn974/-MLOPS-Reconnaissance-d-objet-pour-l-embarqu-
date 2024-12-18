@@ -1,4 +1,4 @@
-package com.surendramaran.yolov9tflite
+package com.mlops.yolov9tflite
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -22,13 +22,13 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
-import com.surendramaran.yolov9tflite.Constants.GLASSES_FINETUNE
-import com.surendramaran.yolov9tflite.Constants.GLASSES_LABELS_PATH
-import com.surendramaran.yolov9tflite.Constants.LABELS_PATH
-import com.surendramaran.yolov9tflite.Constants.MASK_LABELS_PATH
-import com.surendramaran.yolov9tflite.Constants.MASK_MODEL_PATH
-import com.surendramaran.yolov9tflite.Constants.MODEL_PATH
-import com.surendramaran.yolov9tflite.databinding.ActivityMainBinding
+import com.mlops.yolov9tflite.Constants.GLASSES_FINETUNE
+import com.mlops.yolov9tflite.Constants.GLASSES_LABELS_PATH
+import com.mlops.yolov9tflite.Constants.LABELS_PATH
+import com.mlops.yolov9tflite.Constants.MASK_LABELS_PATH
+import com.mlops.yolov9tflite.Constants.MASK_MODEL_PATH
+import com.mlops.yolov9tflite.Constants.MODEL_PATH
+import com.mlops.yolov9tflite.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.util.concurrent.ExecutorService

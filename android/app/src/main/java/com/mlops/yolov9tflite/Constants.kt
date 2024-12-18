@@ -1,4 +1,4 @@
-package com.surendramaran.yolov9tflite
+package com.mlops.yolov9tflite
 
 object Constants {
     const val MODEL_PATH = "v11_default/v11.tflite"
